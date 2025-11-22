@@ -1,0 +1,25 @@
+---
+## Implementation Details (For Team & Report Reference)
+
+### Task 1: PNML Parsing Strategy
+* **Library Used:** `xml.etree.ElementTree` (Python Standard Library).
+* **Logic:**
+    1. The parser reads the XML tree structure.
+    2. It extracts `Places` and identifies the `initialMarking` (token count).
+    3. It extracts `Transitions` and `Arcs`.
+    4. **Consistency Check:** During parsing, the code validates that every arc connects to a valid existing Source (Place/Transition) and Target.
+* **Data Structures:**
+    * `places`: Dictionary `{id: PlaceObj}` for O(1) lookup.
+    * `transitions`: Dictionary `{id: TransitionObj}`.
+    * `pre_set` / `post_set`: Adjacency lists to store graph connections, allowing fast retrieval of input/output places for any transition during the firing process.
+
+### Task 2: Explicit Reachability (BFS)
+* **Algorithm:** Breadth-First Search (BFS).
+* **State Representation:**
+    * A marking is represented as a Python `tuple` of integers (e.g., `(1, 0, 1)`), corresponding to token counts of places sorted by ID.
+    * Using `tuple` allows markings to be hashed and stored in a `set`.
+* **Process:**
+    1. Start with `M0` (Initial Marking).
+    2. In each step, identify **enabled transitions** (where all input places have token > 0).
+    3. **Fire transition:** Create a new marking by strictly subtracting tokens from inputs and adding to outputs (handling the 1-safe property naturally).
+    4. **Loop Detection:** Before adding a new marking to the Queue, check if it exists in the `visited` set. This prevents infinite loops in cyclic nets.

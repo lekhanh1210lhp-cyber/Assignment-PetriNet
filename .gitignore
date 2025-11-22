@@ -1,0 +1,7 @@
+# Bỏ qua thư mục biên dịch Python
+__pycache__/
+*.pyc
+
+# Bỏ qua file cấu hình hệ thống (nếu có)
+.DS_Store
+.vscode/
