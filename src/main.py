@@ -1,6 +1,7 @@
 import sys
 import os
-
+import tracemalloc
+import time
 # 1. Setup đường dẫn để import được petrinet từ cùng thư mục src
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -24,8 +25,37 @@ def main():
     if os.path.exists(file_path):
         print("-> FILE FOUND! Starting to parse...")
         if net.load_pnml(file_path):
+            net.export_graphviz()
              # GỌI TASK 2 Ở ĐÂY
-             net.run_reachability_bfs()
+            tracemalloc.start()
+            start = time.time()
+            net.run_reachability_bfs()
+            curr, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            time_bfs = time.time() - start
+            mem_bfs = peak / 1024 / 1024
+            print(f"--> Time: {time_bfs:.6f} s")
+            print(f"--> RAM (Peak): {mem_bfs:.6f} MB")
+
+            print("\n>>> TASK 3: SYMBOLIC BDD <<<")
+        try:
+            tracemalloc.start()
+            start = time.time()
+            
+            # Nhận 2 giá trị trả về: Số lượng & Object BDD
+            count_bdd, bdd_obj = net.run_reachability_bdd()
+            
+            curr, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            time_bdd = time.time() - start
+            mem_bdd = peak / 1024 / 1024
+            
+            print(f"--> States found: {count_bdd}")
+            print(f"--> Time: {time_bdd:.6f} s")
+            print(f"--> RAM (Peak): {mem_bdd:.6f} MB")
+            
+        except Exception as e:
+            print(f"Lỗi BDD: {e}.")
     else:
         print("-> FILE NOT FOUND.")
         print(f"Current working dir: {os.getcwd()}")
