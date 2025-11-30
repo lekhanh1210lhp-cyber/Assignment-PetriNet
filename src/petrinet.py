@@ -246,94 +246,149 @@ class PetriNet:
             visited_bdd = new_visited
 
         num_states = visited_bdd.count(len(sorted_places))
-        if num_states <= 50:
-            print(f"Danh sách trạng thái (BDD Decoded):")
-            bdd_states = []
+
+        # QUAN TRỌNG: Trả về cả biến 'bdd' manager để dùng cho Task 4 (TheHoang thêm vào sau AnhKhoa done task3)
+        return num_states, visited_bdd, bdd
+
+
+        # if num_states <= 50:
+        #     print(f"Danh sách trạng thái (BDD Decoded):")
+        #     bdd_states = []
             
-            for solution in bdd.pick_iter(visited_bdd, care_vars=bdd_vars_curr):
-                # solution là dict: {'p1': True, 'p2': False, ...}
-                # Ta cần chuyển nó về tuple: (1, 0, ...) cho giống BFS
-                state_tuple = []
+        #     for solution in bdd.pick_iter(visited_bdd, care_vars=bdd_vars_curr):
+        #         # solution là dict: {'p1': True, 'p2': False, ...}
+        #         # Ta cần chuyển nó về tuple: (1, 0, ...) cho giống BFS
+        #         state_tuple = []
+        #         for p_id in sorted_places:
+        #             # Nếu biến p_id là True -> 1, False -> 0
+        #             val = 1 if solution.get(p_id, False) else 0 
+        #             state_tuple.append(val)
+                
+        #         bdd_states.append(tuple(state_tuple))
+                
+        #     print(set(bdd_states))
+        # else:
+        #     print(f"(Số lượng trạng thái quá lớn ({num_states}), không in ra nổi đâu)")
+        # try:
+        #     filename_png = "bdd_final.png"
+        #     filename_dot = "bdd_manual.dot"
+        #     print(f"\nĐang vẽ cây BDD .")
+
+        #     def generate_dot_recursive(u, visited, lines):
+        #         u_id = id(u)
+        #         if u_id in visited: return
+        #         visited.add(u_id)
+
+        #         if u == bdd.true:
+        #             lines.append(f'  "{u_id}" [label="REACHABLE", shape=box, style=filled, fillcolor=lightgreen, fontsize=12];')
+        #             return
+                
+        #         if u == bdd.false:
+        #             lines.append(f'  "{u_id}" [label="FALSE", shape=box, style=filled, fillcolor="#FFCCCC", fontcolor=red, fontsize=10];')
+        #             return
+
+        #         var_name = u.var if u.var else f"Node"
+        #         lines.append(f'  "{u_id}" [label="{var_name}", shape=ellipse, style=filled, fillcolor=lightyellow];')
+
+                
+        #         low_child = u.low
+        #         low_style = "style=dashed"
+        #         if low_child == bdd.false:
+        #              low_style += ', color="#FFaaaa"'
+                
+        #         lines.append(f'  "{u_id}" -> "{id(low_child)}" [{low_style}];')
+        #         generate_dot_recursive(low_child, visited, lines)
+
+        #         high_child = u.high
+        #         high_style = "style=solid"
+                
+        #         is_negated = hasattr(high_child, 'negated') and high_child.negated
+        #         is_dead_end = (high_child == bdd.false)
+
+        #         if is_negated:
+        #              high_style = 'style=dotted, color=red, fontcolor=red, label="not"'
+        #         elif is_dead_end:
+        #              high_style = 'color=red'
+
+        #         lines.append(f'  "{u_id}" -> "{id(high_child)}" [{high_style}];')
+        #         generate_dot_recursive(high_child, visited, lines)
+
+        #     dot_lines = ["digraph BDD {", "rankdir=TB;", "node [fontname=\"Helvetica\"];"]
+            
+        #     root_node = visited_bdd
+        #     dot_lines.append(f'  START [shape=doubleoctagon, style=filled, fillcolor=orange, label="START"];')
+        #     dot_lines.append(f'  START -> "{id(root_node)}";')
+            
+        #     visited_set = set()
+        #     generate_dot_recursive(root_node, visited_set, dot_lines)
+        #     dot_lines.append("}")
+
+        #     with open(filename_dot, "w") as f:
+        #         f.write("\n".join(dot_lines))
+
+        #     subprocess.run(["dot", "-Tpng", filename_dot, "-o", filename_png], check=True)
+            
+        #     print(f"Ảnh nằm đây nè: {os.path.abspath(filename_png)}")
+        #     os.system(f"open {filename_png}")
+            
+        #     try: os.remove(filename_dot)
+        #     except: pass
+
+        # except Exception as e:
+        #     print(f"Lỗi vẽ hình: {e}")
+        # return num_states, visited_bdd
+
+    # ======================================== PHẦN LOGIC CỦA TASK 4 (MỚI) ========================================================
+    def check_deadlock_bdd(self, bdd, visited_bdd):
+        """
+        Task 4: Deadlock detection using Symbolic Logic (equivalent to ILP constraints).
+        Deadlock = (Reachable States) AND (States where NO transition is enabled).
+        """
+        print("Đang kiểm tra Deadlock...")
+        sorted_places = sorted(self.places.keys())
+
+        # 1. Xây dựng công thức DEAD (Không transition nào bắn được)
+        # Mặc định dead_logic là True, sau đó AND với điều kiện "disabled" của từng transition
+        dead_logic = bdd.true
+        
+        for t_id in self.transitions:
+            # Transition t bị disable nếu tồn tại ít nhất 1 place đầu vào p mà không có token (~p)
+            # Logic: t_disabled = (NOT p1) OR (NOT p2) OR ...
+            
+            # Nếu transition không có đầu vào (source transition), nó luôn bắn được -> ko bao giờ deadlock
+            if not self.pre_set[t_id]:
+                dead_logic = bdd.false
+                break
+
+            t_disabled = bdd.false
+            for p_in in self.pre_set[t_id]:
+                # Add điều kiện: Place này không có token
+                t_disabled |= ~bdd.var(p_in)
+            
+            # Hệ thống chỉ chết khi TẤT CẢ các transition đều bị disable
+            dead_logic &= t_disabled
+
+        # 2. Tìm Deadlock = Reachable INTERSECTION Dead
+        deadlock_set = visited_bdd & dead_logic
+
+        # 3. Kiểm tra kết quả
+        if deadlock_set == bdd.false:
+            return None
+        else:
+            # Pick one deadlock state to report
+            satisfying_models = list(bdd.pick_iter(deadlock_set, care_vars=sorted_places))
+            if satisfying_models:
+                # Lấy mẫu đầu tiên tìm thấy
+                model = satisfying_models[0]
+                # Convert về dạng dễ đọc
+                result_marking = {}
                 for p_id in sorted_places:
                     # Nếu biến p_id là True -> 1, False -> 0
-                    val = 1 if solution.get(p_id, False) else 0 
-                    state_tuple.append(val)
-                
-                bdd_states.append(tuple(state_tuple))
-                
-            print(set(bdd_states))
-        else:
-            print(f"(Số lượng trạng thái quá lớn ({num_states}), không in ra nổi đâu)")
-        try:
-            filename_png = "bdd_final.png"
-            filename_dot = "bdd_manual.dot"
-            print(f"\nĐang vẽ cây BDD .")
-
-            def generate_dot_recursive(u, visited, lines):
-                u_id = id(u)
-                if u_id in visited: return
-                visited.add(u_id)
-
-                if u == bdd.true:
-                    lines.append(f'  "{u_id}" [label="REACHABLE", shape=box, style=filled, fillcolor=lightgreen, fontsize=12];')
-                    return
-                
-                if u == bdd.false:
-                    lines.append(f'  "{u_id}" [label="FALSE", shape=box, style=filled, fillcolor="#FFCCCC", fontcolor=red, fontsize=10];')
-                    return
-
-                var_name = u.var if u.var else f"Node"
-                lines.append(f'  "{u_id}" [label="{var_name}", shape=ellipse, style=filled, fillcolor=lightyellow];')
-
-                
-                low_child = u.low
-                low_style = "style=dashed"
-                if low_child == bdd.false:
-                     low_style += ', color="#FFaaaa"'
-                
-                lines.append(f'  "{u_id}" -> "{id(low_child)}" [{low_style}];')
-                generate_dot_recursive(low_child, visited, lines)
-
-                high_child = u.high
-                high_style = "style=solid"
-                
-                is_negated = hasattr(high_child, 'negated') and high_child.negated
-                is_dead_end = (high_child == bdd.false)
-
-                if is_negated:
-                     high_style = 'style=dotted, color=red, fontcolor=red, label="not"'
-                elif is_dead_end:
-                     high_style = 'color=red'
-
-                lines.append(f'  "{u_id}" -> "{id(high_child)}" [{high_style}];')
-                generate_dot_recursive(high_child, visited, lines)
-
-            dot_lines = ["digraph BDD {", "rankdir=TB;", "node [fontname=\"Helvetica\"];"]
-            
-            root_node = visited_bdd
-            dot_lines.append(f'  START [shape=doubleoctagon, style=filled, fillcolor=orange, label="START"];')
-            dot_lines.append(f'  START -> "{id(root_node)}";')
-            
-            visited_set = set()
-            generate_dot_recursive(root_node, visited_set, dot_lines)
-            dot_lines.append("}")
-
-            with open(filename_dot, "w") as f:
-                f.write("\n".join(dot_lines))
-
-            subprocess.run(["dot", "-Tpng", filename_dot, "-o", filename_png], check=True)
-            
-            print(f"Ảnh nằm đây nè: {os.path.abspath(filename_png)}")
-            os.system(f"open {filename_png}")
-            
-            try: os.remove(filename_dot)
-            except: pass
-
-        except Exception as e:
-            print(f"Lỗi vẽ hình: {e}")
-        return num_states, visited_bdd
-
-    
+                    val = 1 if model.get(p_id, False) else 0
+                    result_marking[p_id] = val
+                return result_marking
+            return None
+        
     def export_graphviz(self):
         print("\n--- GRAPHVIZ CODE (Copy vào webgraphviz.com) ---")
         dot = ["digraph PetriNet {", "  rankdir=LR;", "  node [fontname=\"Helvetica\"];"]
