@@ -1,0 +1,24 @@
+<pnml>
+  <net id="choice_deadlock" type="http://www.pnml.org/version-2009/grammar/ptnet">
+    <page id="page1">
+      <place id="p1"><name><text>Start</text></name><initialMarking><text>1</text></initialMarking></place>
+      <place id="p2"><name><text>Loop_Zone</text></name><initialMarking><text>0</text></initialMarking></place>
+      <place id="p3"><name><text>Dead_End</text></name><initialMarking><text>0</text></initialMarking></place>
+
+      <transition id="t1"><name><text>Go_Loop</text></name></transition>
+      <transition id="t2"><name><text>Go_Die</text></name></transition>
+      <transition id="t3"><name><text>Loop_Back</text></name></transition>
+
+      <!-- Nhánh 1: Vào vòng lặp (Sống) -->
+      <arc id="a1" source="p1" target="t1"/>
+      <arc id="a2" source="t1" target="p2"/>
+      <arc id="a3" source="p2" target="t3"/>
+      <arc id="a4" source="t3" target="p1"/>
+
+      <!-- Nhánh 2: Vào ngõ cụt (Chết) -->
+      <arc id="a5" source="p1" target="t2"/>
+      <arc id="a6" source="t2" target="p3"/>
+      <!-- P3 không có transition nào ra -->
+    </page>
+  </net>
+</pnml>

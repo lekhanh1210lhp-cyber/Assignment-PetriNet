@@ -1,0 +1,43 @@
+<pnml>
+  <net id="resource_deadlock" type="http://www.pnml.org/version-2009/grammar/ptnet">
+    <page id="page1">
+      <!-- Resources -->
+      <place id="R1"><name><text>Resource_1</text></name><initialMarking><text>1</text></initialMarking></place>
+      <place id="R2"><name><text>Resource_2</text></name><initialMarking><text>1</text></initialMarking></place>
+
+      <!-- Process A -->
+      <place id="PA_Start"><name><text>ProcessA_Ready</text></name><initialMarking><text>1</text></initialMarking></place>
+      <place id="PA_Has_R1"><name><text>ProcessA_Hold_R1</text></name><initialMarking><text>0</text></initialMarking></place>
+      
+      <!-- Process B -->
+      <place id="PB_Start"><name><text>ProcessB_Ready</text></name><initialMarking><text>1</text></initialMarking></place>
+      <place id="PB_Has_R2"><name><text>ProcessB_Hold_R2</text></name><initialMarking><text>0</text></initialMarking></place>
+
+      <!-- Transitions -->
+      <transition id="TA_Get_R1"><name><text>A_Takes_R1</text></name></transition>
+      <transition id="TB_Get_R2"><name><text>B_Takes_R2</text></name></transition>
+      
+      <!-- DEADLOCK POINT: A cần R2 (đang bị B giữ), B cần R1 (đang bị A giữ) -->
+      <transition id="TA_Get_R2"><name><text>A_Needs_R2_To_Finish</text></name></transition>
+      <transition id="TB_Get_R1"><name><text>B_Needs_R1_To_Finish</text></name></transition>
+
+      <!-- Logic Process A -->
+      <arc id="a1" source="PA_Start" target="TA_Get_R1"/>
+      <arc id="a2" source="R1" target="TA_Get_R1"/>
+      <arc id="a3" source="TA_Get_R1" target="PA_Has_R1"/>
+
+      <arc id="a4" source="PA_Has_R1" target="TA_Get_R2"/>
+      <arc id="a5" source="R2" target="TA_Get_R2"/> <!-- Cần R2 -->
+      <!-- (Giả sử xong việc trả lại resource - nhưng không bao giờ đến được đây nếu Deadlock) -->
+
+      <!-- Logic Process B -->
+      <arc id="b1" source="PB_Start" target="TB_Get_R2"/>
+      <arc id="b2" source="R2" target="TB_Get_R2"/>
+      <arc id="b3" source="TB_Get_R2" target="PB_Has_R2"/>
+
+      <arc id="b4" source="PB_Has_R2" target="TB_Get_R1"/>
+      <arc id="b5" source="R1" target="TB_Get_R1"/> <!-- Cần R1 -->
+
+    </page>
+  </net>
+</pnml>
