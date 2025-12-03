@@ -1,0 +1,103 @@
+    def optimize_marking_ilp(self, bdd, visited_bdd, cost_vector):
+        """
+        Task 5: Maximize c^T M với BDD constraints.
+        Tối ưu hóa linear objective function: maximize c^T M
+        với M là marking thuộc Reach(M₀) (reachable markings từ BDD Task 3).
+        
+        Args:
+            bdd: BDD manager từ Task 3
+            visited_bdd: BDD của tập reachable states từ Task 3
+            cost_vector: Dict {place_id: integer_weight} hoặc List [weight1, weight2, ...] 
+                        theo thứ tự sorted places. c là vector integer weights cho places.
+        
+        Returns:
+            (optimal_marking, optimal_value): 
+                - optimal_marking: Marking tối ưu (dict {place_id: token_count}) hoặc None nếu không có
+                - optimal_value: Giá trị tối ưu c^T M hoặc None nếu không có
+        """
+        
+        # Kiểm tra input hợp lệ
+        if bdd is None or visited_bdd is None:
+            print("--> Lỗi: BDD manager hoặc visited_bdd không hợp lệ!")
+            return None, None
+        
+        sorted_places = sorted(self.places.keys())
+        
+        # Kiểm tra có places không
+        if not sorted_places:
+            print("--> Lỗi: Không có places nào trong Petri net!")
+            return None, None
+        
+        # 1. Chuẩn hóa cost_vector về dạng dict với error handling
+        try:
+            if isinstance(cost_vector, list):
+                if len(cost_vector) != len(sorted_places):
+                    raise ValueError(f"Cost vector length ({len(cost_vector)}) != number of places ({len(sorted_places)})")
+                cost_dict = {}
+                for i, p_id in enumerate(sorted_places):
+                    try:
+                        cost_dict[p_id] = int(cost_vector[i])
+                    except (ValueError, TypeError):
+                        raise ValueError(f"Cost value at index {i} must be an integer, got {type(cost_vector[i])}")
+            elif isinstance(cost_vector, dict):
+                cost_dict = {}
+                for p_id in sorted_places:
+                    try:
+                        cost_dict[p_id] = int(cost_vector.get(p_id, 0))
+                    except (ValueError, TypeError):
+                        raise ValueError(f"Cost value for place '{p_id}' must be an integer, got {type(cost_vector.get(p_id))}")
+            else:
+                raise ValueError("cost_vector must be dict or list of integers")
+        except ValueError as e:
+            print(f"--> Lỗi: {e}")
+            return None, None
+        
+        # 2. Enumerate tất cả reachable states từ BDD (không chỉnh sửa BDD)
+        optimal_marking = None
+        optimal_value = float('-inf')  # Maximize nên bắt đầu từ -infinity
+        
+        try:
+            # Kiểm tra visited_bdd có phải false không (không có reachable states)
+            if visited_bdd == bdd.false:
+                print("--> Không tìm thấy reachable state nào (visited_bdd is false)!")
+                return None, None
+            
+            reachable_states = list(bdd.pick_iter(visited_bdd, care_vars=sorted_places))
+        except Exception as e:
+            print(f"--> Lỗi khi enumerate reachable states từ BDD: {e}")
+            return None, None
+        
+        if not reachable_states:
+            print("--> Không tìm thấy reachable state nào!")
+            return None, None
+        
+        print(f"--> Đang xét {len(reachable_states)} reachable states...")
+        
+        # 3. Tính c^T M cho mỗi state và tìm optimal (maximize)
+        for state_model in reachable_states:
+            try:
+                # Convert BDD model về marking dict
+                marking = {}
+                objective_value = 0
+                
+                for p_id in sorted_places:
+                    # BDD model: True = 1, False = 0 (1-safe net)
+                    # state_model.get() có thể trả về True/False hoặc None
+                    token_count = 1 if state_model.get(p_id, False) else 0
+                    marking[p_id] = token_count
+                    objective_value += cost_dict[p_id] * token_count
+                
+                # Update optimal (maximize)
+                if objective_value > optimal_value:
+                    optimal_value = objective_value
+                    optimal_marking = marking
+            except Exception as e:
+                print(f"--> Cảnh báo: Lỗi khi xử lý state {state_model}: {e}")
+                continue  # Bỏ qua state này và tiếp tục
+        
+        # Kiểm tra kết quả cuối cùng
+        if optimal_marking is None:
+            print("--> Không tìm thấy marking tối ưu (có thể do lỗi trong quá trình tính toán).")
+            return None, None
+        
+        return optimal_marking, optimal_value
