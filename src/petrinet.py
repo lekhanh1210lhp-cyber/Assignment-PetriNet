@@ -33,6 +33,13 @@ class PetriNet:
         self.pre_set = {}  # Input places của transition: T -> {P}
         self.post_set = {} # Output places của transition: T -> {P}
 
+    @staticmethod
+    def natural_keys(text):
+        match = re.search(r'_(\d+)$', text) # Tìm số ở cuối chuỗi
+        if match:
+            return (int(match.group(1)), text)
+        return (float('inf'), text)
+
     def load_pnml(self, file_path):
         try:
             tree = ET.parse(file_path)
@@ -145,109 +152,73 @@ class PetriNet:
                     visited.add(next_tuple)
                     queue.append(next_m)
         
-        print(f"KẾT QUẢ: Tổng số trạng thái tìm thấy (Reachable Markings): {len(visited)}")
-        print("Danh sách các trạng thái:", visited)
+        print(f"Reachable Markings: {len(visited)}")
+        #print("Danh sách các trạng thái:", visited)
         return len(visited)
     # --- KẾT THÚC PHẦN LOGIC CỦA TASK 2 ---
+
+
+    
     def run_reachability_bdd(self):
         # chỗ này gọi trình quản lí BDD nha
         bdd = _bdd.BDD()
-        # khúc này là sắp xếp các place theo ID để ko lỗi BDD. Dùng py nó có hàm sorted sẵn, dùng mấy ngôn ngữ khác chắc t chết
-        sorted_places = sorted(self.places.keys())
-        
-        # 1. Khai báo biến
-        # bdd_vars_curr sẽ lưu các trạng thái hiện tại
+
+        sorted_places = sorted(self.places.keys(), key=self.natural_keys)
         bdd_vars_curr = []
-        # rename_map để ánh xạ biến prime về biến current. Kỉu p' -> p
         rename_map = {} 
-        # vòng lặp này để khai báo biến cho BDD gòm cả trạng thái hiện tại và trạng thái kế tiếp. Current và prime
         for p_id in sorted_places:
             var_curr = f"{p_id}"
             var_next = f"{p_id}_prime"
-            #declare biến cho BDD
             bdd.declare(var_curr, var_next)
-            # append biến current vào list
             bdd_vars_curr.append(var_curr)
-            # ánh xạ biến next về current. Để sau này khi replod thì nó chuyển từ prime về lại current r làm típ mấy cái vòng lặp sau
             rename_map[var_next] = var_curr
 
-        # 2. Mã hóa trạng thái đầu
-        # Tạo biểu thức BDD cho trạng thái ban đầu
         init_parts = []
-        # vòng lặp tạo predicate cho initial marking nè. Vd kỉu initial có token ở p1 với p2 trong số 8 place thì sẽ là p1 & p2 & ~p3 & ~p4 & ... kỉu kỉu z
         for p_id in sorted_places:
             if self.places[p_id].initial_marking > 0:
                 init_parts.append(f"{p_id}")
             else:
                 init_parts.append(f"~ {p_id}")
-        # dùng & để nối các predicate lại. VD như trên thì sẽ là p1 & p2 & ~p3 & ~p4 & ...
         current_bdd = bdd.add_expr(" & ".join(init_parts))
-
-        # 3. Xây dựng Transition Relation (TR). Khó vloz
-        # global_tr sẽ lưu trữ toàn bộ transition relation, nên nó false ban đầu để đỡ OR dính nó vào
-        global_tr = bdd.false
-        # vòng lặp qua từng transition để tạo predicate cho từng transition
+        tr_list = []   
         for t_id in self.transitions:
-            # Pre-condition
-            # pre phải khai báo true trc tại lát sau mình AND mấy cái đkien vào
             pre = bdd.true
-            # vòng lặp qua các place đầu vào của transition hiện tại để tạo điều kiện pre. Vd như p1 & p2 & .... &= là phép AND nha
             for p in self.pre_set[t_id]: pre &= bdd.var(p)
-            
-            # Post-condition
-            # tương tự khai báo post true trc
             post = bdd.true
-            # # vòng lặp đầu lặp qua các place vào (pre_set) để biến nó sang dạng not prime (mất token). Vd T1 có token ở p1 thì sau khi bắn token sẽ thành ~p1' trong post condition
-            # for p in self.pre_set[t_id]: post &= ~bdd.var(f"{p}_prime")
-            # # vòng lặp hai sẽ duyệt qa các place đầu ra (post_set) để biến nó sang dạng prime. VD P1 T1 P2 thì sau khi bắn token sẽ thành p2' trong post condition
-            # for p in self.post_set[t_id]: post &= bdd.var(f"{p}_prime")
-
             pre_nodes = set(self.pre_set[t_id])
             post_nodes = set(self.post_set[t_id])
-
-            # Nếu place nằm trong pre nhưng KHÔNG nằm trong post -> Mất token
             for p in pre_nodes:
-                if p not in post_nodes: 
-                    post &= ~bdd.var(f"{p}_prime")
-
-            # Nếu place nằm trong post -> Có token (bất kể trước đó có hay không)
-            for p in post_nodes: 
-                post &= bdd.var(f"{p}_prime")
-            
-            # Frame Condition. Frame để đảm bảo các place ko có đụng chạm j đến transition này thì sẽ khôm bị j hết. Kiểu nếu P1 T1 P2 thì P3, P4,... sẽ <-> P3', P4',..
+                if p not in post_nodes: post &= ~bdd.var(f"{p}_prime")
+            for p in post_nodes: post &= bdd.var(f"{p}_prime")
             frame = bdd.true
-            # affected là tập các place tham gia dô transition này ở cả hai đầu pre và post. Dấu | là phép hợp Union á
-            affected = set(self.pre_set[t_id]) | set(self.post_set[t_id])
-            # loop này lập qua tất cả place sorted, nếu nó ko affected thì tạo điều kiện để p <-> p'
+            affected = pre_nodes | post_nodes
             for p in sorted_places:
                 if p not in affected:
                     p_c = bdd.var(p)
                     p_n = bdd.var(f"{p}_prime")
-                    # (p and p') or (not p and not p') -> p <-> p'
                     frame &= ((p_c & p_n) | (~p_c & ~p_n))
-            # ta sẽ có đc predicate cho transition hiện tại sẽ là phép and của (pre & post & frame). Và vì có nhiều Transition nên ta sẽ dùng |= để OR nó vào global_tr
-            global_tr |= (pre & post & frame)
-
-        # 4. Vòng lặp tìm kiếm
-        # current_bdd là trạng thái hiện tại, visited_bdd là tập trạng thái đã thăm
+            tr_item = pre & post & frame
+            tr_list.append(tr_item)
+        
         visited_bdd = current_bdd
-        # vòng lặp này để duyệt tất cả trạng thái reachable
+        step = 0
+        
         while True:
-            # 1. Tính giao (AND) giữa trạng thái hiện tại và luật chuyển
-            temp_transition = current_bdd & global_tr
-            # 2. Dùng exist để loại bỏ các biến cũ
-            next_bdd = bdd.exist(set(bdd_vars_curr), temp_transition)
-            next_bdd = bdd.let(rename_map, next_bdd)
-            new_visited = visited_bdd | next_bdd
-            
+            step += 1
+            next_accumulated = bdd.false
+            for tr_part in tr_list:
+                temp = current_bdd & tr_part
+                if temp != bdd.false:
+                    small_next = bdd.exist(set(bdd_vars_curr), temp)
+                    small_next = bdd.let(rename_map, small_next) 
+                    next_accumulated |= small_next
+
+            new_visited = visited_bdd | next_accumulated
             if new_visited == visited_bdd:
                 break
-            current_bdd = next_bdd
+            current_bdd = next_accumulated & ~visited_bdd
             visited_bdd = new_visited
-
         num_states = visited_bdd.count(len(sorted_places))
-
-        # QUAN TRỌNG: Trả về cả biến 'bdd' manager để dùng cho Task 4 (TheHoang thêm vào sau AnhKhoa done task3)
         return num_states, visited_bdd, bdd
 
 
@@ -336,7 +307,7 @@ class PetriNet:
 
         # except Exception as e:
         #     print(f"Lỗi vẽ hình: {e}")
-        # return num_states, visited_bdd
+        # return num_states, visited_bdd, bdd
 
     # ======================================== PHẦN LOGIC CỦA TASK 4 (MỚI) ========================================================
     def check_deadlock_bdd(self, bdd, visited_bdd):
@@ -345,8 +316,8 @@ class PetriNet:
         Deadlock = (Reachable States) AND (States where NO transition is enabled).
         """
         print("Đang kiểm tra Deadlock...")
-        sorted_places = sorted(self.places.keys())
-
+        # sorted_places = sorted(self.places.keys())
+        sorted_places = sorted(self.places.keys(), key=self.natural_keys)
         # 1. Xây dựng công thức DEAD (Không transition nào bắn được)
         # Mặc định dead_logic là True, sau đó AND với điều kiện "disabled" của từng transition
         dead_logic = bdd.true
@@ -428,8 +399,8 @@ class PetriNet:
             print("--> Lỗi: BDD manager hoặc visited_bdd không hợp lệ!")
             return None, None
         
-        sorted_places = sorted(self.places.keys())
-        
+        # sorted_places = sorted(self.places.keys())
+        sorted_places = sorted(self.places.keys(), key=self.natural_keys)
         # kiểm tra có places không
         if not sorted_places:
             print("--> Lỗi: Không có places nào trong Petri net!")
@@ -463,48 +434,77 @@ class PetriNet:
         optimal_marking = None
         optimal_value = float('-inf')  # Maximize nên bắt đầu từ -infinity
         
-        try:
-            # kiểm tra visited_bdd có phải false không (không có reachable states)
-            if visited_bdd == bdd.false:
-                print("--> Không tìm thấy reachable state nào (visited_bdd is false)!")
-                return None, None
+        # try:
+        #     # kiểm tra visited_bdd có phải false không (không có reachable states)
+        #     if visited_bdd == bdd.false:
+        #         print("--> Không tìm thấy reachable state nào (visited_bdd is false)!")
+        #         return None, None
             
-            reachable_states = list(bdd.pick_iter(visited_bdd, care_vars=sorted_places))
-        except Exception as e:
-            print(f"--> Lỗi khi enumerate reachable states từ BDD: {e}")
-            return None, None
+        #     reachable_states = list(bdd.pick_iter(visited_bdd, care_vars=sorted_places))
+        # except Exception as e:
+        #     print(f"--> Lỗi khi enumerate reachable states từ BDD: {e}")
+        #     return None, None
         
-        if not reachable_states:
-            print("--> Không tìm thấy reachable state nào!")
-            return None, None
+        # if not reachable_states:
+        #     print("--> Không tìm thấy reachable state nào!")
+        #     return None, None
         
-        print(f"--> Đang xét {len(reachable_states)} reachable states...")
+        # print(f"--> Đang xét {len(reachable_states)} reachable states...")
         
-        # 3. tính c^T M cho mỗi state và tìm optimal (maximize)
-        for state_model in reachable_states:
-            try:
-                # convert BDD model về marking dict
-                marking = {}
-                objective_value = 0
+        # # 3. tính c^T M cho mỗi state và tìm optimal (maximize)
+        # for state_model in reachable_states:
+        #     try:
+        #         # convert BDD model về marking dict
+        #         marking = {}
+        #         objective_value = 0
                 
+        #         for p_id in sorted_places:
+        #             # BDD model: True = 1, False = 0 (1-safe net)
+        #             # state_model.get() có thể trả về true/false hoặc None
+        #             token_count = 1 if state_model.get(p_id, False) else 0
+        #             marking[p_id] = token_count
+        #             objective_value += cost_dict[p_id] * token_count
+                
+        #         # update optimal (maximize)
+        #         if objective_value > optimal_value:
+        #             optimal_value = objective_value
+        #             optimal_marking = marking
+        #     except Exception as e:
+        #         print(f"--> Cảnh báo: Lỗi khi xử lý state {state_model}: {e}")
+        #         continue  # bỏ qua state này và tiếp tục
+        
+        # # kiểm tra kết quả cuối cùng
+        # if optimal_marking is None:
+        #     print("--> Không tìm thấy marking tối ưu (có thể do lỗi trong quá trình tính toán).")
+        #     return None, None
+        
+        # return optimal_marking, optimal_value
+        try:
+            # pick_iter trả về một "vòi nước" (generator), ta hứng từng giọt
+            iterator = bdd.pick_iter(visited_bdd, care_vars=sorted_places)
+            
+            count = 0
+            for state_model in iterator:
+                count += 1
+                current_val = 0
+                # Tính giá trị c^T * M cho trạng thái này
                 for p_id in sorted_places:
-                    # BDD model: True = 1, False = 0 (1-safe net)
-                    # state_model.get() có thể trả về true/false hoặc None
-                    token_count = 1 if state_model.get(p_id, False) else 0
-                    marking[p_id] = token_count
-                    objective_value += cost_dict[p_id] * token_count
+                    # Nếu place có token (val=1) thì cộng cost
+                    if state_model.get(p_id, False):
+                        current_val += cost_dict.get(p_id, 0)
                 
-                # update optimal (maximize)
-                if objective_value > optimal_value:
-                    optimal_value = objective_value
-                    optimal_marking = marking
-            except Exception as e:
-                print(f"--> Cảnh báo: Lỗi khi xử lý state {state_model}: {e}")
-                continue  # bỏ qua state này và tiếp tục
-        
-        # kiểm tra kết quả cuối cùng
-        if optimal_marking is None:
-            print("--> Không tìm thấy marking tối ưu (có thể do lỗi trong quá trình tính toán).")
+                # Cập nhật Max ngay lập tức
+                if current_val > optimal_value:
+                    optimal_value = current_val
+                    # Lưu lại marking này (convert sang dict số 1/0)
+                    optimal_marking = {p: (1 if state_model.get(p, False) else 0) for p in sorted_places}
+            
+            print(f"--> Đã duyệt qua {count} trạng thái.")
+
+        except Exception as e:
+            print(f"--> Lỗi khi duyệt BDD: {e}")
             return None, None
-        
-        return optimal_marking, optimal_value
+
+        if optimal_marking:
+            return optimal_marking, optimal_value
+        return None, None
