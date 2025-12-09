@@ -1,4 +1,4 @@
-    def optimize_marking_ilp(self, bdd, visited_bdd, cost_vector):
+def optimize_marking_ilp(self, bdd, visited_bdd, cost_vector):
         """
         Task 5: Maximize c^T M với BDD constraints.
         Tối ưu hóa linear objective function: maximize c^T M
