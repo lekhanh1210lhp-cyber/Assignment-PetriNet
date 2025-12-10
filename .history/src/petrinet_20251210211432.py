@@ -319,20 +319,25 @@ class PetriNet:
         sorted_places = sorted(self.places.keys(), key=self.natural_keys)
         
         # 2. Xây dựng biểu thức logic cho "Tất cả transitions bị disabled"
+        # Disabled Global = Disabled(t1) AND Disabled(t2) AND ...
         all_transitions_disabled_expr = bdd.true
 
         for t_id in self.transitions:
-
+            # A. Xây dựng điều kiện để transition t ĐƯỢC BẮN (Enabled)
+            # t enabled <=> Tất cả input places đều = 1 (True)
             t_is_enabled = bdd.true
             input_places = self.pre_set[t_id]
             
             for p_id in input_places:
-
+                # Lấy biến BDD tương ứng với place p (tên biến là p_id như đã khai báo ở Task 3)
                 bdd_var_p = bdd.var(p_id)
                 t_is_enabled = t_is_enabled & bdd_var_p
-
+            
+            # B. Xây dựng điều kiện để transition t BỊ KẸT (Disabled)
+            # Disabled = NOT(Enabled)
             t_is_disabled = ~t_is_enabled
             
+            # C. Cộng dồn vào điều kiện tổng
             all_transitions_disabled_expr = all_transitions_disabled_expr & t_is_disabled
 
         # 3. Tìm Deadlock: Là trạng thái Reachable VÀ bị Disabled toàn bộ
@@ -342,9 +347,11 @@ class PetriNet:
         if deadlock_set_bdd == bdd.false:
             return None # Không tìm thấy deadlock
         else:
-
+            # Trích xuất 1 kết quả cụ thể (Counter-example)
+            # care_vars là cần thiết để hàm pick trả về đầy đủ giá trị các biến
             sample_solution = bdd.pick(deadlock_set_bdd, care_vars=sorted_places)
             
+            # Convert sample_solution (dict {'p1': True, ...}) thành tuple (1, 0, ...)
             marking_list = []
             for p_id in sorted_places:
                 val = 1 if sample_solution.get(p_id, False) else 0
